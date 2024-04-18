@@ -99,7 +99,7 @@ for t in range(0,35000,200):
     train_time=append(train_time,t)
   train_input=append(train_input, circle_index)
 
-for l in range(100,35000,400):
+for l in range(100,35000,200):
   for i in range(len(cross_index)):
     train_time=append(train_time,l)
   train_input=append(train_input, cross_index)
@@ -110,7 +110,7 @@ for time_0 in range(200,35000,200):
   train_time_output_0 = append(train_time_output_0, time_0 + delay)
   train_input_output_0 = append(train_input_output_0,0)
 
-for time_X in range(100,35000,400):
+for time_X in range(100,35000,200):
   delay_x = 10
   train_time_output_X = append(train_time_output_X, time_X + delay_x)
   train_input_output_X = append(train_input_output_X,0)
@@ -259,9 +259,8 @@ for ax in [ax1, ax2, ax3, ax4]:
     ax.set_xlim(lims)
     ax.grid(True)
 
-
-ax1.plot(mon_spike.t[time_initial_h:time_sim_h], mon_spike.i[time_initial_h:time_sim_h], '.r')
-ax2.plot(M.t[time_initial_m:time_sim_m], M.i[time_initial_m:time_sim_m], '.r')
+ax1.plot(M.t[time_initial_m:time_sim_m], M.i[time_initial_m:time_sim_m], '.r')
+ax2.plot(mon_spike.t[time_initial_h:time_sim_h], mon_spike.i[time_initial_h:time_sim_h], '.r')
 ax3.plot(mon_out.t[time_initial:time_sim], mon_out.v[0][time_initial:time_sim]/mV)
 ax3.plot(mon_spike_out.t[mon_spike_out.i==0], mon_spike_out.i[mon_spike_out.i==0], '.r')
 ax4.plot(mon_out_x.t[time_initial:time_sim], mon_out_x.v[0][time_initial:time_sim]/mV)
