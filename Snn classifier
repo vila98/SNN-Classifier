@@ -1,0 +1,293 @@
+!pip install brian2
+
+import matplotlib.pyplot as plt
+import numpy as np
+from brian2 import *
+from brian2 import NeuronGroup, Synapses, SpikeMonitor, StateMonitor
+from brian2 import ms, mV
+from brian2 import defaultclock, run
+import random
+from google.colab import files
+
+#Visualise synapse connectivity
+def visualise_connectivity(S):
+    Ns = len(S.source)
+    Nt = len(S.target)
+    figure(figsize=(10, 4))
+    subplot(121)
+    plot(zeros(Ns), arange(Ns), 'ok', ms=10)
+    plot(ones(Nt), arange(Nt), 'ok', ms=10)
+    for i, j in zip(S.i, S.j):
+        plot([0, 1], [i, j], '-k')
+    xticks([0, 1], ['Source', 'Target'])
+    ylabel('Neuron index')
+    xlim(-0.1, 1.1)
+    ylim(-1, max(Ns, Nt))
+    subplot(122)
+    plot(S.i, S.j, 'ok')
+    xlim(-1, Ns)
+    ylim(-1, Nt)
+    xlabel('Source neuron index')
+    ylabel('Target neuron index')
+
+# Plot graphics function
+def graphics(mon_out,mon_v,w_S1,w_S2):
+  figure(figsize = (12,4))
+  subplot(121)
+  plt.plot(mon_out.t/ms, mon_out.v[0]/mV)
+  plt.ylabel('Output layer, 0')
+  subplot(122)
+  plt.plot(mon_v.t, mon_v.v[0]/mV)
+  plt.ylabel('Output layer, 1')
+
+  figure(figsize = (12,4))
+  subplot(121)
+  for i in range(len(w_S1.w)):
+    plt.plot(w_S1.t, w_S1.w[i],alpha=0.5)
+  plt.ylabel('w_1/g_max')
+  subplot(122)
+  for i in range(len(w_S2.w)):
+    plt.plot(w_S2.t, w_S2.w[i]/gmax,alpha=0.5)
+  plt.ylabel('w_2/g_max')
+
+#Def 5x5 list images (X and 0)
+circle = [0,1,1,1,0,1,0,0,0,1,1,0,0,0,1,1,0,0,0,1,0,1,1,1,0]
+cross_index = [1,2,3,5,9,10,14,15,19,21,23]
+cross = [1,0,0,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,1,0,1,0,0,0,1]
+circle_index = [0,4,6,8,12,16,18,20,24]
+circle_array = np.array(circle)
+cross_array = np.array(cross)
+
+# SNN classification task
+start_scope()
+#initial values
+I=70*pA
+v_r = -60*mV
+v_t = -40*mV
+v_peak = 35*mV
+C = 100*pfarad
+k = 0.7*pA/mV**2
+a = 30*Hz
+b = -2*nS
+c= -50*mV
+d = 100*pA
+
+
+#STDP values
+taupre = 20*ms
+taupost = taupre
+gmax= 100
+dApre = 0.01
+dApost = -dApre * taupre / taupost * 1.05
+dApost *= gmax
+dApre *= gmax
+
+
+train_time = array([])
+train_input = array([])
+
+neuron_input_index = array([])
+
+train_time_output_X = array([])
+train_input_output_X = array([])
+
+train_time_output_0 = array([])
+train_input_output_0 = array([])
+
+for t in range(0,35000,200):
+  for i in range(len(circle_index)):
+    train_time=append(train_time,t)
+  train_input=append(train_input, circle_index)
+
+for l in range(100,35000,400):
+  for i in range(len(cross_index)):
+    train_time=append(train_time,l)
+  train_input=append(train_input, cross_index)
+
+# Define time list supervised learning
+for time_0 in range(200,35000,200):
+  delay = 10
+  train_time_output_0 = append(train_time_output_0, time_0 + delay)
+  train_input_output_0 = append(train_input_output_0,0)
+
+for time_X in range(100,35000,400):
+  delay_x = 10
+  train_time_output_X = append(train_time_output_X, time_X + delay_x)
+  train_input_output_X = append(train_input_output_X,0)
+
+# Test array
+
+test_circle = [35500,36000,37500,41000,43000,44500]
+test_cross = [36500,37000,38000,38500,39000,40000,44000]
+
+for j in test_circle:
+  for i in range(len(circle_index)):
+    train_time=append(train_time,j)
+  train_input=append(train_input, circle_index)
+
+for j in test_cross:
+  for i in range(len(cross_index)):
+    train_time=append(train_time,j)
+  train_input=append(train_input, cross_index)
+
+
+eqs= '''
+dv/dt = (k*(v-v_r)*(v-v_t)/C - u/C + I/C) :volt
+du/dt = a*(b*v-u) : amp
+'''
+
+spike_input = SpikeGeneratorGroup(25,train_input, train_time*ms)
+spike_delay_0 = SpikeGeneratorGroup(1,train_input_output_0, train_time_output_0*ms)
+spike_delay_X = SpikeGeneratorGroup(1,train_input_output_X, train_time_output_X*ms)
+
+
+N = NeuronGroup(10,eqs,threshold= 'v>v_peak', reset = 'v = c ; u +=d' ,method ='euler')
+output = NeuronGroup(2,eqs,threshold= 'v>v_peak', reset = 'v = c ; u +=d' ,method ='euler',refractory=3*ms)
+
+N.v= -60*mV
+N.u = d
+output.v= -60*mV
+output.u = d
+
+S1 = Synapses(spike_input,N,
+              ''' w : 1
+             lr : 1
+             w_normalized : 1
+             dApre/dt = -Apre / taupre : 1 (event-driven)
+             dApost/dt = -Apost / taupost : 1 (event-driven)
+            '''
+             ,
+             on_pre='''
+             v_post += w*mV
+             Apre += dApre
+             w = clip(w + lr*Apost, -gmax, gmax)''',
+             on_post='''
+             Apost += dApost
+             w = clip(w + lr*Apre, -gmax, gmax)''',
+             )
+
+S1.connect()
+S1.w = 'rand()*10'
+S1.lr = 0.12
+
+S2 =Synapses(N,output,
+             ''' w : 1
+             lr : 1
+             w_normalized : 1
+             dApre/dt = -Apre / taupre : 1 (event-driven)
+             dApost/dt = -Apost / taupost : 1 (event-driven)
+            '''
+             ,
+             on_pre='''
+             v_post += w*mV
+             Apre += dApre
+             w = clip(w + lr*Apost, -gmax, gmax)''',
+             on_post='''
+             Apost += dApost
+             w = clip(w + lr*Apre, -gmax, gmax)''',
+             )
+S2.connect()
+S2.w = 'rand()*gmax'
+S2.lr = 0.12
+
+S3 = Synapses(spike_delay_0,output,on_pre='v+=40*mV')
+S3.connect(i=0,j=0)
+
+S4=  Synapses(spike_delay_X,output,on_pre='v+=40*mV')
+S4.connect(i=0,j=1)
+
+mon_v = StateMonitor(N, 'v',record = True)
+mon_out = StateMonitor(output, 'v',record = [0])
+mon_out_x = StateMonitor(output, 'v',record = [1])
+mon_spike = SpikeMonitor(N)
+mon_spike_out = SpikeMonitor(output, record = [0])
+mon_spike_out_x = SpikeMonitor(output, record = [1])
+
+M=SpikeMonitor(spike_input)
+M_0 = SpikeMonitor(spike_delay_0)
+M_X = SpikeMonitor(spike_delay_X)
+
+w_S2 = StateMonitor(S2,['w'],record = True, dt=100*ms)
+w_S1 = StateMonitor(S1,['w'],record = True, dt=100*ms)
+
+network = Network(spike_input,N,S1,output,S2,S3,S4,spike_delay_0,spike_delay_X) 
+network.add(w_S1,w_S2,M_X,M_0)
+
+
+@network_operation(dt = 100*ms)
+def normalize():
+  if network.t < 100*ms:
+    print(network.t)
+
+  suma_w = sum(S1.w)
+  S1.w =  700*S1.w/suma_w
+  S2.w = 100*S2.w/sum(S2.w)
+network.add(normalize)
+
+@network_operation(dt = 10*ms)
+def disconnect_stdp():
+  if network.t > 35000*ms:
+    S1.lr = 0
+    S2.lr = 0
+network.add(disconnect_stdp)
+
+network.add(mon_v,mon_spike,mon_out,M,mon_out_x,mon_spike_out,mon_spike_out_x)
+
+network.run(45*second)
+
+graphics(mon_out,mon_out_x,w_S1,w_S2)
+
+
+# Plots of output and hiden spikes and ouput neuron potential
+
+fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(10, 6))
+
+
+time_sim = len(mon_out_x.t) # max 150000 ms
+time_initial = len(mon_out_x.t) - 100000
+
+time_initial_m = time_initial // (len(mon_out_x.t) // len(M.t))
+time_initial_h = time_initial // (len(mon_out_x.t) // len(mon_spike.t))
+
+time_sim_m = len(M.t)
+time_sim_h = len(mon_out.t)
+
+lims = (mon_out_x.t[time_initial], mon_out_x.t[time_sim-1])
+
+
+for ax in [ax1, ax2, ax3, ax4]:
+    ax.set_xlim(lims)
+    ax.grid(True)
+
+
+ax1.plot(mon_spike.t[time_initial_h:time_sim_h], mon_spike.i[time_initial_h:time_sim_h], '.r')
+ax2.plot(M.t[time_initial_m:time_sim_m], M.i[time_initial_m:time_sim_m], '.r')
+ax3.plot(mon_out.t[time_initial:time_sim], mon_out.v[0][time_initial:time_sim]/mV)
+ax3.plot(mon_spike_out.t[mon_spike_out.i==0], mon_spike_out.i[mon_spike_out.i==0], '.r')
+ax4.plot(mon_out_x.t[time_initial:time_sim], mon_out_x.v[0][time_initial:time_sim]/mV)
+ax4.plot(mon_spike_out_x.t[mon_spike_out_x.i==1], mon_spike_out_x.i[mon_spike_out_x.i==1], '.r')
+
+ax1.set_title('Input layer spike')
+ax2.set_title('Hidden layer spike')
+ax3.set_title('Membrane potential output 0')
+ax4.set_title('Membrane potential output X')
+
+
+# Colab code to create a .txt of input spikes, hidden layer spikes and output spikes
+with open('train_data.txt', 'w') as f:
+  for i in range(len(train_time)):
+    item = [train_input[i],train_time[i]]
+    f.write("%s\n" % item)
+files.download('train_data.txt')
+
+with open('spike_hidden.txt', 'w') as f:
+  for l in range(len(mon_spike.t)):
+    item = [mon_spike.i[l],mon_spike.t[l]]
+    f.write("%s\n" % item)
+files.download('spike_hidden.txt')
+
+with open('spike_out.txt', 'w') as f:
+  for l in range(len(mon_spike_out.t)):
+    item = [mon_spike_out.i[l],mon_spike_out.t[l]]
+    f.write("%s\n" % item)
+files.download('spike_out.txt')
