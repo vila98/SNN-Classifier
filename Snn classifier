@@ -220,8 +220,8 @@ def normalize():
     print(network.t)
 
   suma_w = sum(S1.w)
-  S1.w =  700*S1.w/suma_w
-  S2.w = 100*S2.w/sum(S2.w)
+  S1.w =  600*S1.w/suma_w
+  S2.w = 140*S2.w/sum(S2.w)
 network.add(normalize)
 
 @network_operation(dt = 10*ms)
